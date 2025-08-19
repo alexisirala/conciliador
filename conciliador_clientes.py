@@ -92,5 +92,5 @@ if uploaded_file:
 
 st.markdown("""
 ---
-**Conciliador de Clientes** creado con 鉂わ笍 para facilitar la gesti贸n y el control de pagos.
+**Conciliador de Clientes**  para facilitar la gestion y el control de pagos.
 """)
