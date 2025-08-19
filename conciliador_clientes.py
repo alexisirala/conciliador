@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import io
-import time
 
 st.set_page_config(page_title="Conciliador de Clientes", page_icon="EGT", layout="centered")
 st.title("EGT - Conciliador de Clientes")
@@ -9,32 +8,38 @@ st.write("Sube tu archivo de extracto bancario (Excel) y descarga el archivo con
 
 uploaded_file = st.file_uploader("Cargar extracto Excel", type=["xlsx"])
 
-def procesar_excel(df):
-    # Detectar columna de fecha
-    col_fecha = [col for col in df.columns if str(col).strip().lower() == "fecha"]
-    fecha_col = col_fecha[0] if col_fecha else df.columns[0]
-    col_accion = [col for col in df.columns if str(col).strip().lower() == "accion"]
-    accion_col = col_accion[0] if col_accion else df.columns[-1]
+def limpiar_col(col):
+    # Limpia espacios y minusculas
+    return str(col).strip().lower().replace(" ", "")
 
-    df[fecha_col] = pd.to_datetime(df[fecha_col])
+def procesar_excel(df):
+    # Renombrar columnas limpias para evitar errores de espacios
+    columnas_limpias = {col: limpiar_col(col) for col in df.columns}
+    df = df.rename(columns=columnas_limpias)
+    
+    # Detectar columna de fecha y accion
+    fecha_col = next((col for col in df.columns if "fecha" in col), df.columns[0])
+    accion_col = next((col for col in df.columns if "accion" in col), df.columns[-1])
+
+    # Verifica columnas obligatorias
     if "saldo" not in df.columns or "haber" not in df.columns:
         st.error("El archivo debe tener las columnas 'saldo' y 'haber'.")
         return None
 
+    df[fecha_col] = pd.to_datetime(df[fecha_col])
     df["Fecha Corte"] = None
     df["Saldo Corte"] = None
     df["Creditos/Haber despues Corte"] = None
     df["Monto a Pagar"] = None
     df["Diferencia Calculada"] = None
-    df["Situaci贸n Pago"] = None
+    df["Situacion Pago"] = None
+    df["Es Corte"] = False  # Nueva columna para marcar la fila del corte
 
     saldo_encabezado = df.loc[0, "saldo"]
     fecha_encabezado = df.loc[0, fecha_col]
     pagos_idx = df[df[accion_col].astype(str).str.strip().str.lower() == "pago"].index
-    total_pagos = len(pagos_idx)
-    inicio = time.time()
 
-    for i, idx in enumerate(pagos_idx, 1):
+    for idx in pagos_idx:
         row = df.loc[idx]
         fecha_pago = row[fecha_col]
         fecha_pago_date = fecha_pago.date()
@@ -43,12 +48,16 @@ def procesar_excel(df):
         if not fechas_anteriores.empty:
             fecha_corte_date = fechas_anteriores[fecha_col].dt.date.max()
             registros_corte = df[df[fecha_col].dt.date == fecha_corte_date]
+            # Busca el idx de la fila corte
             idx_corte = registros_corte[fecha_col].idxmax()
             fecha_corte = df.loc[idx_corte, fecha_col]
             saldo_corte = df.loc[idx_corte, "saldo"]
+            # Marca la fila corte
+            df.at[idx_corte, "Es Corte"] = True
         else:
             saldo_corte = saldo_encabezado
             fecha_corte = fecha_encabezado
+            df.at[0, "Es Corte"] = True  # La primera fila como corte si no hay anteriores
 
         creditos_despues_corte = df[
             (df[fecha_col] > fecha_corte) &
@@ -63,27 +72,54 @@ def procesar_excel(df):
         diferencia = pago_realizado - monto_a_pagar
 
         if pago_realizado > monto_a_pagar:
-            situacion = "Dep贸sito mayor al monto a pagar (saldo a favor)"
+            situacion = "Deposito mayor al monto a pagar (saldo a favor)"
         elif pago_realizado < monto_a_pagar:
-            situacion = "Dep贸sito menor al monto a pagar (debe dinero)"
+            situacion = "Deposito menor al monto a pagar (debe dinero)"
         else:
-            situacion = "Dep贸sito igual al monto a pagar (saldo saldado)"
+            situacion = "Deposito igual al monto a pagar (saldo saldado)"
 
         df.at[idx, "Fecha Corte"] = fecha_corte
         df.at[idx, "Saldo Corte"] = saldo_corte
         df.at[idx, "Creditos/Haber despues Corte"] = creditos_despues_corte_abs
         df.at[idx, "Monto a Pagar"] = monto_a_pagar
         df.at[idx, "Diferencia Calculada"] = diferencia
-        df.at[idx, "Situaci贸n Pago"] = situacion
+        df.at[idx, "Situacion Pago"] = situacion
+
+    # Ordena la columna Es Corte para que aparezca primero si quieres
+    cols = list(df.columns)
+    if "Es Corte" in cols:
+        cols.insert(0, cols.pop(cols.index("Es Corte")))
+        df = df[cols]
 
     return df
+
+def color_situacion(val):
+    # Colorea la columna según la situación de pago
+    if isinstance(val, str):
+        if "mayor" in val:
+            return "background-color: #d4f4dd"  # verde claro
+        elif "menor" in val:
+            return "background-color: #ffd1d1"  # rojo claro
+        elif "igual" in val:
+            return "background-color: #e6e6ff"  # azul claro
+    return ""
+
+def color_corte(row):
+    # Colorea la fila del corte
+    if row["Es Corte"]:
+        return ["background-color: #fff3cd"] * len(row)  # amarillo claro
+    return [""] * len(row)
 
 if uploaded_file:
     df = pd.read_excel(uploaded_file)
     conciliado = procesar_excel(df)
     if conciliado is not None:
         st.success("Archivo procesado correctamente.")
-        st.dataframe(conciliado)
+        # Visualización coloreando situación y corte
+        df_styled = conciliado.style.applymap(color_situacion, subset=["Situacion Pago"])
+        df_styled = df_styled.apply(color_corte, axis=1)
+        st.write("Tabla conciliada:")
+        st.dataframe(df_styled, use_container_width=True)
         # Para descargar el resultado
         output = io.BytesIO()
         conciliado.to_excel(output, index=False)
@@ -92,5 +128,5 @@ if uploaded_file:
 
 st.markdown("""
 ---
-**Conciliador de Clientes**  para facilitar la gestion y el control de pagos.
+**Conciliador de Clientes** para facilitar la gestión y el control de pagos.
 """)
