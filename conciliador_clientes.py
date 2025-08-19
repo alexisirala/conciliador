@@ -11,17 +11,30 @@ uploaded_file = st.file_uploader("Cargar extracto Excel", type=["xlsx"])
 def limpiar_col(col):
     return str(col).strip().lower().replace(" ", "")
 
+def marcar_pagos(df, concepto_col):
+    # Crea columna 'Es Pago' True/False según el concepto
+    df["Es Pago"] = df[concepto_col].astype(str).str.strip().str.lower().apply(
+        lambda x: x.startswith("boleta depósito") or x.startswith("pago desde terminal eglobalt")
+    )
+    return df
+
 def procesar_excel(df):
     columnas_limpias = {col: limpiar_col(col) for col in df.columns}
     df = df.rename(columns=columnas_limpias)
+
     fecha_col = next((col for col in df.columns if "fecha" in col), df.columns[0])
-    accion_col = next((col for col in df.columns if "accion" in col), df.columns[-1])
+    concepto_col = next((col for col in df.columns if "concepto" in col), None)
+    if not concepto_col:
+        st.error("El archivo debe tener la columna 'Concepto'.")
+        return None
 
     if "saldo" not in df.columns or "haber" not in df.columns:
         st.error("El archivo debe tener las columnas 'saldo' y 'haber'.")
         return None
 
     df[fecha_col] = pd.to_datetime(df[fecha_col])
+    df = marcar_pagos(df, concepto_col)
+
     df["Fecha Corte"] = None
     df["Saldo Corte"] = None
     df["Creditos/Haber despues Corte"] = None
@@ -29,11 +42,11 @@ def procesar_excel(df):
     df["Diferencia Calculada"] = None
     df["Situacion Pago"] = None
     df["Es Corte"] = False
-    df["Estado"] = ""  # Nueva columna para mostrar emoji/color textual
+    df["Estado"] = ""
 
     saldo_encabezado = df.loc[0, "saldo"]
     fecha_encabezado = df.loc[0, fecha_col]
-    pagos_idx = df[df[accion_col].astype(str).str.strip().str.lower() == "pago"].index
+    pagos_idx = df[df["Es Pago"]].index
 
     for idx in pagos_idx:
         row = df.loc[idx]
@@ -71,7 +84,7 @@ def procesar_excel(df):
             situacion = "Deposito menor al monto a pagar (debe dinero)"
             df.at[idx, "Estado"] = "⚠️ Faltante"
         else:
-            situacion = "Deposito igual al monto a pagar (saldo saldado)"
+            situacion = "Deposito igual al monto a pagar (saldo cero)"
             df.at[idx, "Estado"] = "🔵 Saldado"
 
         df.at[idx, "Fecha Corte"] = fecha_corte
