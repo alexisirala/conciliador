@@ -4,7 +4,7 @@ import io
 import time
 
 st.set_page_config(page_title="Conciliador de Clientes", page_icon="EGT", layout="centered")
-st.title("馃 Conciliador de Clientes")
+st.title("EGT - Conciliador de Clientes")
 st.write("Sube tu archivo de extracto bancario (Excel) y descarga el archivo conciliado.")
 
 uploaded_file = st.file_uploader("Cargar extracto Excel", type=["xlsx"])
