@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import io
-import os
 
 st.set_page_config(page_title="Conciliador de Clientes", page_icon="EGT", layout="centered")
 st.title("EGT - Conciliador de Clientes")
@@ -21,20 +20,16 @@ def marcar_pagos(df, concepto_col):
 def procesar_excel(df):
     columnas_limpias = {col: limpiar_col(col) for col in df.columns}
     df = df.rename(columns=columnas_limpias)
-
     fecha_col = next((col for col in df.columns if "fecha" in col), df.columns[0])
     concepto_col = next((col for col in df.columns if "concepto" in col), None)
     if not concepto_col:
         st.error("El archivo debe tener la columna 'Concepto'.")
         return None
-
     if "saldo" not in df.columns or "haber" not in df.columns:
         st.error("El archivo debe tener las columnas 'saldo' y 'haber'.")
         return None
-
     df[fecha_col] = pd.to_datetime(df[fecha_col])
     df = marcar_pagos(df, concepto_col)
-
     df["Fecha Corte"] = None
     df["Saldo Corte"] = None
     df["Creditos/Haber despues Corte"] = None
@@ -43,11 +38,9 @@ def procesar_excel(df):
     df["Situacion Pago"] = None
     df["Es Corte"] = False
     df["Estado"] = ""
-
     saldo_encabezado = df.loc[0, "saldo"]
     fecha_encabezado = df.loc[0, fecha_col]
     pagos_idx = df[df["Es Pago"]].index
-
     for idx in pagos_idx:
         row = df.loc[idx]
         fecha_pago = row[fecha_col]
@@ -76,7 +69,6 @@ def procesar_excel(df):
         pago_realizado = abs(row["haber"])
         monto_a_pagar = saldo_corte - creditos_despues_corte_abs
         diferencia = pago_realizado - monto_a_pagar
-
         if pago_realizado > monto_a_pagar:
             situacion = "Deposito mayor al monto a pagar (saldo a favor)"
             df.at[idx, "Estado"] = "✅ Sobrante"
@@ -86,30 +78,20 @@ def procesar_excel(df):
         else:
             situacion = "Deposito igual al monto a pagar (saldo cero)"
             df.at[idx, "Estado"] = "🔵 Saldado"
-
         df.at[idx, "Fecha Corte"] = fecha_corte
         df.at[idx, "Saldo Corte"] = saldo_corte
         df.at[idx, "Creditos/Haber despues Corte"] = creditos_despues_corte_abs
         df.at[idx, "Monto a Pagar"] = monto_a_pagar
         df.at[idx, "Diferencia Calculada"] = diferencia
         df.at[idx, "Situacion Pago"] = situacion
-
-    return df
-
-def leer_excel(uploaded_file):
-    # Detecta extensión y usa el engine correcto
-    file_extension = os.path.splitext(uploaded_file.name)[1].lower()
-    if file_extension == ".xls":
-        df = pd.read_excel(uploaded_file, engine="xlrd")
-    elif file_extension == ".xlsx":
-        df = pd.read_excel(uploaded_file, engine="openpyxl")
-    else:
-        st.error("Archivo no reconocido. Solo se aceptan .xls y .xlsx")
-        return None
     return df
 
 if uploaded_file:
-    df = leer_excel(uploaded_file)
+    try:
+        df = pd.read_excel(uploaded_file)
+    except Exception as e:
+        st.error("No se pudo abrir el archivo. Verifica que sea un Excel válido (.xls o .xlsx) guardado desde Excel. Error: %s" % str(e))
+        df = None
     if df is not None:
         conciliado = procesar_excel(df)
         if conciliado is not None:
