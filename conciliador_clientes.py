@@ -1,18 +1,18 @@
 import streamlit as st
 import pandas as pd
 import io
+import os
 
 st.set_page_config(page_title="Conciliador de Clientes", page_icon="EGT", layout="centered")
 st.title("EGT - Conciliador de Clientes")
-st.write("Sube tu archivo de extracto bancario (Excel) y descarga el archivo conciliado.")
+st.write("Sube tu archivo de extracto bancario (Excel .xls o .xlsx) y descarga el archivo conciliado.")
 
-uploaded_file = st.file_uploader("Cargar extracto Excel", type=["xlsx"])
+uploaded_file = st.file_uploader("Cargar extracto Excel", type=["xls", "xlsx"])
 
 def limpiar_col(col):
     return str(col).strip().lower().replace(" ", "")
 
 def marcar_pagos(df, concepto_col):
-    # Crea columna 'Es Pago' True/False según el concepto
     df["Es Pago"] = df[concepto_col].astype(str).str.strip().str.lower().apply(
         lambda x: x.startswith("boleta depósito") or x.startswith("pago desde terminal eglobalt")
     )
@@ -96,16 +96,29 @@ def procesar_excel(df):
 
     return df
 
+def leer_excel(uploaded_file):
+    # Detecta extensión y usa el engine correcto
+    file_extension = os.path.splitext(uploaded_file.name)[1].lower()
+    if file_extension == ".xls":
+        df = pd.read_excel(uploaded_file, engine="xlrd")
+    elif file_extension == ".xlsx":
+        df = pd.read_excel(uploaded_file, engine="openpyxl")
+    else:
+        st.error("Archivo no reconocido. Solo se aceptan .xls y .xlsx")
+        return None
+    return df
+
 if uploaded_file:
-    df = pd.read_excel(uploaded_file)
-    conciliado = procesar_excel(df)
-    if conciliado is not None:
-        st.success("Archivo procesado correctamente.")
-        st.dataframe(conciliado, use_container_width=True)
-        output = io.BytesIO()
-        conciliado.to_excel(output, index=False)
-        output.seek(0)
-        st.download_button("Descargar archivo conciliado", output, "extracto_conciliado.xlsx")
+    df = leer_excel(uploaded_file)
+    if df is not None:
+        conciliado = procesar_excel(df)
+        if conciliado is not None:
+            st.success("Archivo procesado correctamente.")
+            st.dataframe(conciliado, use_container_width=True)
+            output = io.BytesIO()
+            conciliado.to_excel(output, index=False)
+            output.seek(0)
+            st.download_button("Descargar archivo conciliado", output, "extracto_conciliado.xlsx")
 
 st.markdown("""
 ---
