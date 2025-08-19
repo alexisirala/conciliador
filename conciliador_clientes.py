@@ -119,7 +119,7 @@ if uploaded_file:
         df_styled = conciliado.style.applymap(color_situacion, subset=["Situacion Pago"])
         df_styled = df_styled.apply(color_corte, axis=1)
         st.write("Tabla conciliada:")
-        st.dataframe(df_styled, use_container_width=True)
+        st.write(df_styled)
         # Para descargar el resultado
         output = io.BytesIO()
         conciliado.to_excel(output, index=False)
