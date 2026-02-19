@@ -1,5 +1,5 @@
 pandas
 openpyxl
 xlrd
-streamlit==1.19.0
+streamlit>=1.40.0
 altair==4.2.2
